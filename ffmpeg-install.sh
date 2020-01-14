@@ -1,8 +1,9 @@
 #!/bin/bash
 
 #### This script has been created to compile 
-# FFmpeg along with the Transform360 filter of the
-# facebook project (https://github.com/facebook/transform360).
+# FFmpeg along with the Transform360 (Join OpenCV) filter of the
+# facebook project (https://github.com/facebook/transform360) and
+# VMAF quality metric (https://github.com/Netflix/vmaf). 
 # 
 # This container will allow the encoding of video360.
 # By Wilmer Moina.
@@ -49,12 +50,25 @@ sudo apt-get update -qq && sudo apt-get -y install \
   build-essential \
   python-dev \
   python-numpy \
-  software-properties-common
+  software-properties-common \
+  python3 \
+  python3-dev \
+  python3-pip \
+  python3-setuptools \
+  python3-tk \
+  num-utils \
+  && \
+	apt-get clean && \
+	rm -rf /var/lib/apt/lists && \
+
+
+# get and install tools for python
+pip3 install --upgrade pip && \
 
 add-apt-repository "deb http://security.ubuntu.com/ubuntu xenial-security main"
 
 media_io_tools=(zlib1g-dev libjpeg-dev libwebp-dev libpng-dev libtiff5-dev libjasper-dev libopenexr-dev libgdal-dev)
-video_io_tools=(libdc1394-22-dev libavcodec-dev libavformat-dev libswscale-dev libtheora-dev libvorbis-dev libxvidcore-dev libx264-dev yasm libopencore-amrnb-dev libopencore-amrwb-dev libv4l-dev libxine2-de)
+video_io_tools=(libdc1394-22-dev libavcodec-dev libavformat-dev libswscale-dev libtheora-dev libvorbis-dev libxvidcore-dev libx264-dev yasm libopencore-amrnb-dev libopencore-amrwb-dev libv4l-dev libxine2-de libavdevice-dev libavutil-dev libavfilter-dev libswscale-dev libavresample-dev) 
 lin_alg_tools=(libtbb-dev libeigen3-dev)
 
 apt-get install -y ${media_io_tools[@]}
@@ -212,6 +226,18 @@ sed -i '27d' vf_transform360.c && sed -i '27i #include "Transform360/Library/Vid
 sed -i '28d' vf_transform360.c && sed -i '28i #include "Transform360/Library/VideoFrameTransformHelper.h"' vf_transform360.c && \
 cd .. && \
 
+
+# Install VMAF
+cd  ~/ffmpeg_sources && \
+    sudo apt install ninja-build && \
+    pip install --user numpy scipy matplotlib notebook pandas sympy nose scikit-learn scikit-image h5py sureal meson && \
+    git clone --depth 1 https://github.com/Netflix/vmaf.git vmaf && \
+    cd vmaf && \
+    make && \
+    sudo make install && \
+    sudo cp vmaf/libvmaf/build/src/libvmaf.so /usr/lib/x86_64-linux-gnu/ \
+    cd .. && \
+
 #Configure ffmpeg in the source folder:
 
 PATH="$HOME/bin:$PATH" PKG_CONFIG_PATH="$HOME/ffmpeg_build/lib/pkgconfig" ./configure \
@@ -219,6 +245,7 @@ PATH="$HOME/bin:$PATH" PKG_CONFIG_PATH="$HOME/ffmpeg_build/lib/pkgconfig" ./conf
   --pkg-config-flags="--static" \
   --extra-cflags="-I$HOME/ffmpeg_build/include" \
   --extra-ldflags="-L$HOME/ffmpeg_build/lib" \
+  --extra-ldflags="-L$HOME/ffmpeg_sources/vmaf/libvmaf" \
   --extra-libs="-lpthread -lm" \
   --bindir="$HOME/bin" \
   --enable-gpl \
@@ -232,10 +259,12 @@ PATH="$HOME/bin:$PATH" PKG_CONFIG_PATH="$HOME/ffmpeg_build/lib/pkgconfig" ./conf
   --enable-libvpx \
   --enable-libx264 \
   --enable-libx265 \
+  --enable-libtheora \
   --enable-libopencv \
   --enable-libxvid \
   --extra-libs='-lTransform360 -lstdc++' \
   --enable-nonfree && \
+  --enable-libvmaf --enable-version3 && \
 PATH="$HOME/bin:$PATH" make && \
 make install && \
 hash -r
@@ -249,4 +278,19 @@ rm -rf ~/ffmpeg_sources/
 rm -rf ~/ffmpeg_build/
 
 # List filters
-ffmpeg -filters
+ffmpeg -filters 
+
+# Simple script for calculating bitrate statistics using FFmpeg.
+pip install ffmpeg_bitrate_stats
+
+# Simple script for calculating quality metrics with FFmpeg.
+# Currently supports PSNR, SSIM and VMAF.
+pip install ffmpeg_quality_metrics
+
+# SITI: Spatial Information / Temporal Information
+pip3 install --user siti
+pip3 install --user .
+
+
+
+
